@@ -18,6 +18,7 @@
 #define MQTT_PL_MAX_LEN 1024
 #define MQTT_TOPIC_MAX_LEN 1024
 
+ESP8266WebServer web_server;
 
 class JafMqttWeb
 {
