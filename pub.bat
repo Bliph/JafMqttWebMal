@@ -1,0 +1,1 @@
+"C:\Program Files (x86)\mosquitto\mosquitto_pub" -d -h iot-solutions.iots.no -t v1/devices/me/attributes -u 1NZXATwzBMqlqAp11kQz -f values.json

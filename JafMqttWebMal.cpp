@@ -7,6 +7,7 @@
 #include <time.h>
 #include <PubSubClient.h>
 #include <FS.h>
+#include <ArduinoJson.h>
 #include "JafMqttWebMal.h"
 
 /**
@@ -35,6 +36,7 @@ Override:
 // MQTT
 WiFiClient espClient;
 PubSubClient mqtt_client(espClient);
+PubSubClient tb_client(espClient);
 
 IPAddress local_IP(192,168,0,1);
 IPAddress gateway(10,0,0,1);
@@ -174,6 +176,14 @@ void JafMqttWeb::mqtt_reconnect()
     mqtt_client.connect(mqtt_id_unique.c_str(), mqtt_user.c_str(), mqtt_password.c_str());
   }
      
+  if (!tb_client.connected()) 
+  {
+    if (debug) Serial.print("tb_client.connect(" + mqtt_id_unique + ", " +  tb_access_token + ", " + mqtt_password + ") = ");
+    if (debug) Serial.println(tb_client.connect(mqtt_id_unique.c_str(), tb_access_token.c_str(), mqtt_password.c_str()));
+
+    if (debug) Serial.println("Reconnectiong MQTT ID=" + mqtt_id_unique);
+    tb_client.connect(mqtt_id_unique.c_str(), mqtt_user.c_str(), mqtt_password.c_str());
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -253,6 +263,7 @@ void JafMqttWeb::handleSetup()
     if (web_server.argName(i) == "mqtt_user")         mqtt_user   = String(web_server.arg(i));        
     if (web_server.argName(i) == "mqtt_password")     mqtt_password = String(web_server.arg(i));    
     if (web_server.argName(i) == "mqtt_topic_prefix") mqtt_topic_prefix = String(web_server.arg(i));
+    if (web_server.argName(i) == "tb_access_token")   tb_access_token = String(web_server.arg(i));
     
     if (web_server.argName(i) == "reboot")    ESP.restart();    
     if ((web_server.argName(i) == "format") && (web_server.arg(i) == "yes")) SPIFFS.format();
@@ -266,6 +277,7 @@ void JafMqttWeb::handleSetup()
     utilConfigWrite("/mqtt_user.cfg", mqtt_user);
     utilConfigWrite("/mqtt_password.cfg", mqtt_password);
     utilConfigWrite("/mqtt_topic_prefix.cfg", mqtt_topic_prefix);
+    utilConfigWrite("/tb_access_token.cfg", tb_access_token);
   }
 
   if (updatessid)
@@ -298,6 +310,7 @@ void JafMqttWeb::handleSetup()
   message += "    MQTT User: <input type=\"text\" name=\"mqtt_user\" value = \"" +String(mqtt_user)+ "\"><br>\n";
   message += "    MQTT Password: <input type=\"text\" name=\"mqtt_password\" value = \"" +String(mqtt_password)+ "\"><br>\n";
   message += "    MQTT Topic Prefix: <input type=\"text\" name=\"mqtt_topic_prefix\" value = \"" +String(mqtt_topic_prefix)+ "\"><br>\n";
+  message += "    ThingsBoard Access Token: <input type=\"text\" name=\"tb_access_token\" value = \"" +String(tb_access_token)+ "\"><br>\n";
   message += "    <input type=\"hidden\" name=\"updatemqtt\" value=\"1\">\n";
   message += "    <input type=\"submit\" value=\"Set\"><br>\n";
   message += "  </form><br><br>\n";
@@ -514,6 +527,38 @@ void JafMqttWeb::mqttPublish(char* _topic, char* pl)
   }
 }
 
+void JafMqttWeb::tbPublishTelemetry(char* pl)
+{
+  tb_client.publish(tb_telemtry_topic.c_str(), pl);
+  
+  if (debug) 
+  {
+    Serial.print(tb_telemtry_topic);
+    Serial.print(" = ");
+    Serial.println(pl);
+  }
+
+}
+
+void JafMqttWeb::tbPublishAttributes(char* pl)
+{
+  tb_client.publish(tb_attribute_topic.c_str(), pl);
+  
+  if (debug) 
+  {
+    Serial.print(tb_attribute_topic);
+    Serial.print(" = ");
+    Serial.println(pl);
+  }
+}
+
+void JafMqttWeb::tbPublishAttribute(char* key, char* value)
+{
+  char pl[MQTT_PL_MAX_LEN];
+  sprintf(pl, "{\"%s\":\"%s\"}", key, value);
+  tbPublishAttributes(pl);
+}
+
 void JafMqttWeb::mqttPublishByteArray(char* _topic, byte* data, int len)
 {
   char pl[MQTT_PL_MAX_LEN];
@@ -544,33 +589,50 @@ void JafMqttWeb::loopMqttPublish_status(unsigned long runtime_millis)
   if (millis() > current_millis_status_publish + runtime_millis)
   {
       String s;
+      StaticJsonDocument<MQTT_PL_MAX_LEN> tbs;
       time_t now = time(nullptr);
 
       s = String((uint32_t)now);
       strncpy(pl, s.c_str(), sizeof(pl)-1);
       mqttPublish("Status/Time/Value", pl);
+      tbs["time"] = pl;
 
       s = WiFi.localIP().toString();
       strncpy(pl, s.c_str(), sizeof(pl)-1);
       mqttPublish("Status/IP/Value", pl);
+      tbs["IP"] = pl;
 
       strncpy(pl, ssid.c_str(), sizeof(pl)-1);
       mqttPublish("Status/SSID/Value", pl);
+      tbs["SSID"] = pl;
 
       strncpy(pl, ap_ssid_unique.c_str(), sizeof(pl)-1);
       mqttPublish("Status/AP_SSID/Value", pl);
+      tbs["AP_SSID"] = pl;
 
       s = bytes2string(mac, 6);
       strncpy(pl, s.c_str(), sizeof(pl)-1);
       mqttPublish("Status/MAC/Value", pl);
+      tbs["MAC"] = pl;
 
       s = String(WiFi.RSSI());
       strncpy(pl, s.c_str(), sizeof(pl)-1);
       mqttPublish("Status/RSSI/Value", pl);
-    
-      if (debug) mqttPublish("Status/Debug/Enabled", "On");
-      else mqttPublish("Status/Debug/Enabled", "Off");
+      tbs["RSSI"] = pl;
 
+      if (debug) 
+      {
+        mqttPublish("Status/Debug/Enabled", "On");
+        tbs["Debug"] = "On";
+      }
+      else 
+      {
+        mqttPublish("Status/Debug/Enabled", "Off");
+        tbs["Debug"] = "Off";
+      }
+
+      serializeJson(tbs, pl);
+      tbPublishAttributes(pl);
       current_millis_status_publish = millis();
   }
 }
@@ -603,6 +665,7 @@ void JafMqttWeb::blink()
     blipblop = !blipblop;
     current_millis_blink = millis();
     digitalWrite(led, blipblop);
+    if (debug) Serial.print('.');
   }
 }
 
@@ -642,6 +705,7 @@ void JafMqttWeb::loop(void)
   }
 
   if (mqtt_interleave == 0) mqtt_client.loop();
+  if (mqtt_interleave == 0) tb_client.loop();
 
   web_server.handleClient();
   blink();
@@ -764,5 +828,6 @@ void JafMqttWeb::setup(void)
   
   // MQTT
   mqtt_client.setServer(mqtt_server.c_str(), mqtt_port.toInt());
+  tb_client.setServer(mqtt_server.c_str(), mqtt_port.toInt());
   mqtt_client.setCallback(sMqttCallback);
 }

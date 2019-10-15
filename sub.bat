@@ -1,0 +1,1 @@
+"C:\Program Files (x86)\mosquitto\mosquitto_sub" -h 10.0.0.102 -t /geiterasen/MAL_gw/# -v

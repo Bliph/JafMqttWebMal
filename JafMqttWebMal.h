@@ -2,7 +2,7 @@
 #define __JafMqttWebMal_H__
 
 #define LED_BUILTIN_NODEMCU   2
-#define LED_BUILTIN_WEMOS_D1  4
+#define LED_BUILTIN_WEMOS_D1  2
 
 #define LED_OK_1  100;
 #define LED_OK_0  900;
@@ -18,6 +18,7 @@
 #define MQTT_PL_MAX_LEN 1024
 #define MQTT_TOPIC_MAX_LEN 1024
 
+extern ESP8266WebServer web_server;
 
 class JafMqttWeb
 {
@@ -41,6 +42,9 @@ class JafMqttWeb
     virtual void handleNotFound();
     virtual void loopDataRead();
     virtual void loopMqttPublish();
+    virtual void tbPublishTelemetry(char* pl);
+    virtual void tbPublishAttributes(char* pl);
+    virtual void tbPublishAttribute(char* key, char* value);
     virtual void mqttCallback(char* topic_, byte* payload_, unsigned int length);
     virtual void mqttPublish(char* topic, char* pl);
     virtual void mqttPublishByteArray(char* _topic, byte* data, int len);
@@ -80,6 +84,11 @@ class JafMqttWeb
     String mqtt_password      = "cZT3WjehIE_8";
 
     String mqtt_port          = "1883";
+
+    boolean tb = true;
+    String tb_access_token    = "empty";
+    String tb_telemtry_topic  = "v1/devices/me/telemetry";
+    String tb_attribute_topic = "v1/devices/me/attributes";
 
     int timezone = 0;
     int dst = 0;
